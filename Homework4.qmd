@@ -1,0 +1,176 @@
+---
+title: "Homework 4"
+author: "James Poslusny"
+format: html
+editor: visual
+---
+
+## Task 1: Conceptual Questions
+
+1.  The apply() functions are meant to perform a function on each element of a list or vector, without having to loop. Purrr is the tidyverse equivalent of this, which as the advantage of being more consistent (we love consistent estimators. Purrr isn't an estimator, but still, consistency is good), as well as some helper functions. The name also reminds of me of cats, which I adore, so that's a big personal win for me. The equivalent purr function to apply is map.
+
+2.  lapply(my_list,cor,method = "kendall")
+
+3.  Purrr is more consistent and has helper functions
+
+4.  Side effect functions are operations that occur when running a function that are not necessarily the point of running said function, but occur anyway.
+
+5.  You can name a variable "sd" in a function and not interfere with the regular sd function because all names within the custom function are never passed outside of the function. The function is its own little box where inputs go in, and outputs come out, and all the inner workings never leave.
+
+## Task 2 Writing R functions
+
+1.  Writing a function to get the RMSE. We're going to call it ~~Leo(), after my cat~~ getRMSE().
+
+    ```{r}
+    getRMSE<- function(response, observation, na.rm = T){
+      RMSE<- sqrt((1/length(response-observation)*sum((response-observation)^2, na.rm = na.rm)))
+      return(RMSE)
+    }
+    ```
+
+2.  Running some code and testing the function.
+
+    ```{r}
+    set.seed(10)
+    n <- 100
+    x <- runif(n)
+    resp <- 3 + 10*x + rnorm(n)
+    pred <- predict(lm(resp ~ x), data.frame(x))
+    getRMSE(resp,pred)
+
+    #This might throw an error. In any case, the mismatch in size is going to affect things. 
+    resp[2]<- NA
+    resp[4]<- NA
+    getRMSE(resp,pred)
+
+    #I.... I know less about R than I thought. After some digging, I've discovered that R adjusts the length of the vector to account for the missing value being removed. Additionally, because NA-any real number produces NA, the length of the second vector is altered to match. Hence no error, and we get a result. 
+
+    getRMSE(resp,pred,na.rm = T) #same result, because default. 
+    getRMSE(resp,pred,na.rm = F) #returns NA
+    ```
+
+3.  We're going to write a function to get the MAE. We're going to call it ~~Wally(), after my wife's cat~~ getMAE(). (Bayesians love MAE).
+
+    ```{r}
+    getMAE<- function(response, observation, na.rm = T){
+      MAE<- (1/length(response-observation))*sum(abs(response-observation),na.rm = na.rm)
+      return(MAE)
+    }
+    ```
+
+4.  Testing the getMAE() function using the code Dr. Post gave us.
+
+    ```{r}
+    set.seed(10)
+    n <- 100
+    x <- runif(n)
+    resp <- 3 + 10*x + rnorm(n)
+    pred <- predict(lm(resp ~ x), data.frame(x))
+
+    getMAE(resp,pred)
+
+    #Setting the NAs
+    resp[66]<-NA
+    resp[47]<-NA
+
+    getMAE(resp,pred)
+    getMAE(resp,pred,na.rm = T)
+    getMAE(resp,pred,na.rm = F)
+    ```
+
+5.  Writing the wrapper function. I'd make a third joke about naming it after a cat, but we only have two.
+
+```{r}
+getRSMAE<- function(response, observation, na.rm = T, metric = "Both"){
+  if(is.numeric(response)==T&is.vector(response)==T&is.atomic(response)==T&is.numeric(observation)==T&is.vector(observation)==T&is.atomic(observation)==T){
+    if(metric == "Both"){
+      RMSE<- getRMSE(response, observation, na.rm)
+      MAE<- getMAE(response, observation, na.rm)
+      names(RMSE)<- "RMSE"
+      names(MAE)<- "MAE"
+      retvec<- c(RMSE,MAE)
+      return(retvec)
+    } else if(metric == "RMSE"){
+        RMSE<- getRMSE(response, observation, na.rm)
+        names(RMSE)<- "RMSE"
+        return(RMSE)
+    } else if(metric == "MAE"){
+        MAE<- getMAE(response, observation, na.rm)
+        names(MAE)<- "MAE"
+        return(MAE)
+    } else {
+      return("ERROR: ACCEPTABLE VALUES FOR METRIC ARE Both, RMSE, MAE")
+    }
+  } else {
+    return("ERROR: ONLY ATOMIC VECTOR INPUTS ALLOWED")
+  }
+}
+```
+
+6.  Testing the wrapper function. Wish me luck!
+
+    ```{r}
+    set.seed(10)
+    n <- 100
+    x <- runif(n)
+    resp <- 3 + 10*x + rnorm(n)
+    pred <- predict(lm(resp ~ x), data.frame(x))
+
+    getRSMAE(resp, pred, metric = "RMSE")
+    getRSMAE(resp, pred, metric = "MAE")
+    getRSMAE(resp, pred, metric = "Both")
+
+    #Missing values time
+    resp[66]<- NA
+    resp[17]<- NA
+
+    getRSMAE(resp, pred, metric = "RMSE")
+    getRSMAE(resp, pred, metric = "MAE")
+    getRSMAE(resp, pred, metric = "Both")
+
+    #I can't believe that worked first try. Okay, now let's break it on purpose
+
+    dat<- data.frame(Response = resp, Prediction = pred)
+    getRSMAE(dat, dat)
+    ```
+
+## Task 3 Querying an API 
+
+1.  Using HTTR's get() to see everything from the past month about a topic I'm interested in. Given what happened to me recently, I went with flu.
+
+    ```{r}
+    URL_ID<- "https://newsapi.org/v2/everything?q=flu&from=2024-06-10&sortBy=publishedAt&apiKey=a1acc9bbdcc343b798d93e3b8ef06917"
+    id_info<- httr::GET(URL_ID)
+
+    ```
+
+2.  Parsing from step 1
+
+    ```{r}
+    library(jsonlite)
+    parsed<- fromJSON(rawToChar(id_info$content))
+
+    library(tidyverse)
+    flu<- as_tibble(parsed$articles)
+    head(flu)
+    #I think we're here. 
+    ```
+
+3.  Writing the function to query this API. I think I'll call it queryNewsAPI().
+
+    ```{r}
+    queryNewsAPI<- function(query, timeframe, key){
+      URL_ID<- paste("https://newsapi.org/v2/everything?q=",query,"&from=",timeframe,"&sortBy=publishedAt&apiKey=",key, sep = "")
+      id_info<- httr::GET(URL_ID)
+      parsed<- fromJSON(rawToChar(id_info$content))
+      dat<- as_tibble(parsed$articles)
+      return(dat)
+    }
+    ```
+
+**Using the function twice!**
+
+```{r}
+head(queryNewsAPI("Lego","2024-07-01","a1acc9bbdcc343b798d93e3b8ef06917"))
+head(queryNewsAPI("T-Rex","2024-07-01","a1acc9bbdcc343b798d93e3b8ef06917"))
+```
